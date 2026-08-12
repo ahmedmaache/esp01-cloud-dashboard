@@ -3,7 +3,8 @@
  */
 
 let socket = null;
-let mqttCloudClient = null;
+let firebaseApp = null;
+let firebaseDb = null;
 let reconnectInterval = 1000;
 const maxReconnectInterval = 10000;
 let isLedOn = false;
@@ -24,45 +25,54 @@ const sensorContainer = document.getElementById('sensor-container');
 // Connect WebSocket & MQTT Cloud on page load
 window.addEventListener('DOMContentLoaded', () => {
     connectWebSocket();
-    connectMQTTCloud();
+    connectFirebaseCloud();
 });
 
-function connectMQTTCloud() {
-    if (typeof mqtt === 'undefined') {
+function connectFirebaseCloud() {
+    if (typeof firebase === 'undefined') {
         updateCloudStatus('disconnected', 'Cloud Offline');
         return;
     }
 
+    // IMPORTANT: The user must paste their API Key and Database URL here
+    const firebaseConfig = {
+        apiKey: "AIzaSyBlPvWL2ljiPY5UdFukQQjfkH82ep-fft4",
+        databaseURL: "https://studio-3020558911-5e45b-default-rtdb.firebaseio.com",
+        projectId: "studio-3020558911-5e45b"
+    };
+
+    if (firebaseConfig.apiKey === "YOUR_FIREBASE_API_KEY") {
+        updateCloudStatus('disconnected', 'Cloud Not Configured');
+        logEvent('system', 'Firebase is not configured. Please add your credentials in app.js.');
+        return;
+    }
+
     updateCloudStatus('connecting', 'Cloud Syncing...');
-    logEvent('system', 'Connecting to HiveMQ Cloud MQTT Broker over WebSockets...');
+    logEvent('system', 'Connecting to Firebase Realtime Database...');
 
     try {
-        mqttCloudClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-            clientId: 'WebDashboard_' + Math.random().toString(16).substr(2, 8)
-        });
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        firebaseDb = firebase.database();
 
-        mqttCloudClient.on('connect', () => {
-            updateCloudStatus('connected', 'Cloud Online');
-            logEvent('system', 'Connected to HiveMQ Cloud Broker! Subscribing to telemetry...');
-            mqttCloudClient.subscribe('leflaha/esp01/telemetry');
-        });
+        updateCloudStatus('connected', 'Cloud Online');
+        logEvent('system', 'Connected to Firebase! Listening for telemetry...');
 
-        mqttCloudClient.on('message', (topic, message) => {
-            try {
-                const data = JSON.parse(message.toString());
-                handleIncomingMessage(data);
-            } catch (e) {}
-        });
-
-        mqttCloudClient.on('error', (err) => {
-            updateCloudStatus('disconnected', 'Cloud Error');
-        });
-
-        mqttCloudClient.on('offline', () => {
-            updateCloudStatus('disconnected', 'Cloud Offline');
+        // Listen for telemetry updates
+        const telemetryRef = firebaseDb.ref('/esp01/telemetry');
+        telemetryRef.on('value', (snapshot) => {
+            const dataStr = snapshot.val();
+            if (dataStr) {
+                try {
+                    const data = JSON.parse(dataStr);
+                    handleIncomingMessage(data);
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
         });
     } catch (e) {
         updateCloudStatus('disconnected', 'Cloud Error');
+        console.error(e);
     }
 }
 
@@ -222,15 +232,15 @@ function sendCommand(cmd, value = '') {
         sent = true;
     }
 
-    if (mqttCloudClient && mqttCloudClient.connected) {
-        mqttCloudClient.publish('leflaha/esp01/cmd', payloadStr);
+    if (firebaseDb) {
+        firebaseDb.ref('/esp01/command').set(payloadStr);
         sent = true;
     }
 
     if (sent) {
         logEvent('tx', `TX: ${payloadStr}`);
     } else {
-        logEvent('error', 'Cannot send command: Both local WebSocket and MQTT Cloud are disconnected.');
+        logEvent('error', 'Cannot send command: Both local WebSocket and Firebase Cloud are disconnected.');
     }
 }
 
