@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP-01 Automation & Cloud Control</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-icon">⚡</div>
+                <div>
+                    <h1>ESP-01 Automation Node</h1>
+                    <p class="subtitle">Local & Cloud Automation Server</p>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <div id="status-pill" class="status-pill status-disconnected">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Disconnected</span>
+                </div>
+                <div id="cloud-pill" class="status-pill status-disconnected">
+                    <span class="status-dot"></span>
+                    <span id="cloud-text">Cloud Offline</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-grid">
+            <!-- Telemetry Cards -->
+            <div class="card metric-card">
+                <div class="card-header">
+                    <span class="card-icon">⏱️</span>
+                    <h3>System Uptime</h3>
+                </div>
+                <div class="metric-value" id="val-uptime">0s</div>
+                <div class="metric-label">Seconds since boot</div>
+            </div>
+
+            <div class="card metric-card">
+                <div class="card-header">
+                    <span class="card-icon">🧠</span>
+                    <h3>Free Heap RAM</h3>
+                </div>
+                <div class="metric-value" id="val-heap">-- KB</div>
+                <div class="metric-label">Available memory</div>
+            </div>
+
+            <div class="card metric-card">
+                <div class="card-header">
+                    <span class="card-icon">🌐</span>
+                    <h3>WS Clients</h3>
+                </div>
+                <div class="metric-value" id="val-clients">0</div>
+                <div class="metric-label">Active connections</div>
+            </div>
+
+            <!-- Controls Card -->
+            <div class="card control-card">
+                <div class="card-header">
+                    <span class="card-icon">🎛️</span>
+                    <h3>Manual Relay Controls & Quick Commands</h3>
+                </div>
+                <div class="control-group">
+                    <!-- Manual Direct Controls -->
+                    <div class="control-row">
+                        <div>
+                            <div class="control-title">Manual Output Control</div>
+                            <div class="control-desc">Direct ON / OFF / Toggle Commands</div>
+                        </div>
+                        <div class="btn-group-row">
+                            <button class="btn btn-on" onclick="turnOn()">ON</button>
+                            <button class="btn btn-off" onclick="turnOff()">OFF</button>
+                            <button id="btn-led" class="btn btn-toggle" onclick="toggleLED()">
+                                <span id="led-state-text">OFF</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Timed Pulse Preset Commands -->
+                    <div class="control-row">
+                        <div>
+                            <div class="control-title">Quick Timed Pulse Presets</div>
+                            <div class="control-desc">Turn ON for fixed duration then auto OFF</div>
+                        </div>
+                        <div class="btn-group-row">
+                            <button class="btn btn-pulse" onclick="pulseRelay(5)">5s</button>
+                            <button class="btn btn-pulse" onclick="pulseRelay(30)">30s</button>
+                            <button class="btn btn-pulse" onclick="pulseRelay(60)">1m</button>
+                            <button class="btn btn-pulse" onclick="pulseRelay(300)">5m</button>
+                        </div>
+                    </div>
+
+                    <!-- 5-Second Pulse Auto-Blink -->
+                    <div class="control-row">
+                        <div>
+                            <div class="control-title">Continuous Auto-Blink Timer</div>
+                            <div class="control-desc">Continuous 5s ON / OFF cycling</div>
+                        </div>
+                        <button id="btn-autoblink" class="btn btn-toggle" onclick="toggleAutoBlink()">
+                            <span id="autoblink-text">OFF</span>
+                        </button>
+                    </div>
+
+                    <!-- Emergency Stop Override -->
+                    <div class="control-row">
+                        <div>
+                            <div class="control-title">Emergency Override</div>
+                            <div class="control-desc">Force OFF & disable all active schedules/timers</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="emergencyStop()">STOP ALL</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weekly Schedule Card -->
+            <div class="card schedule-card">
+                <div class="card-header">
+                    <span class="card-icon">📅</span>
+                    <h3>Weekly Relay Scheduler</h3>
+                </div>
+                <div class="schedule-group">
+                    <div class="control-row">
+                        <div>
+                            <div class="control-title">Enable Weekly Schedule</div>
+                            <div class="control-desc">Turn relay ON only on active days & time window</div>
+                        </div>
+                        <button id="btn-sched-enable" class="btn btn-toggle" onclick="toggleScheduleEnable()">
+                            <span id="sched-enable-text">DISABLED</span>
+                        </button>
+                    </div>
+
+                    <div class="schedule-days-row">
+                        <label class="schedule-label">Active Days of Week:</label>
+                        <div class="days-selector">
+                            <button class="day-btn" data-day="1" onclick="toggleDayBtn(this)">Mon</button>
+                            <button class="day-btn" data-day="2" onclick="toggleDayBtn(this)">Tue</button>
+                            <button class="day-btn" data-day="3" onclick="toggleDayBtn(this)">Wed</button>
+                            <button class="day-btn" data-day="4" onclick="toggleDayBtn(this)">Thu</button>
+                            <button class="day-btn" data-day="5" onclick="toggleDayBtn(this)">Fri</button>
+                            <button class="day-btn" data-day="6" onclick="toggleDayBtn(this)">Sat</button>
+                            <button class="day-btn" data-day="0" onclick="toggleDayBtn(this)">Sun</button>
+                        </div>
+                    </div>
+
+                    <div class="time-window-row">
+                        <div class="time-input-group">
+                            <label for="time-start">ON Time:</label>
+                            <input type="time" id="time-start" value="08:00" class="time-input">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="time-end">OFF Time:</label>
+                            <input type="time" id="time-end" value="18:00" class="time-input">
+                        </div>
+                        <button class="btn btn-action" onclick="saveSchedule()">Save Schedule</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sensor Module Telemetry Card -->
+            <div class="card sensor-card">
+                <div class="card-header">
+                    <span class="card-icon">📊</span>
+                    <h3>Sensor Telemetry</h3>
+                </div>
+                <div id="sensor-container" class="sensor-container">
+                    <div class="sensor-placeholder">
+                        <p>No active sensor registered.</p>
+                        <small>Custom sensor data will render here automatically once datasheets are configured.</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WiFi Settings Card -->
+            <div class="card wifi-card">
+                <div class="card-header">
+                    <span class="card-icon">📶</span>
+                    <h3>WiFi Network Settings</h3>
+                </div>
+                <div class="wifi-settings-group">
+                    <!-- Current Connection Status -->
+                    <div class="wifi-status-row">
+                        <div class="wifi-info-item">
+                            <span class="wifi-info-label">Mode:</span>
+                            <span id="wifi-mode" class="wifi-info-value">--</span>
+                        </div>
+                        <div class="wifi-info-item">
+                            <span class="wifi-info-label">Connected:</span>
+                            <span id="wifi-ssid" class="wifi-info-value">--</span>
+                        </div>
+                        <div class="wifi-info-item">
+                            <span class="wifi-info-label">IP:</span>
+                            <span id="wifi-ip" class="wifi-info-value">--</span>
+                        </div>
+                        <div class="wifi-info-item">
+                            <span class="wifi-info-label">Signal:</span>
+                            <span id="wifi-rssi" class="wifi-info-value">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Scan & Connect -->
+                    <div class="control-row">
+                        <div>
+                            <div class="control-title">Scan Available Networks</div>
+                            <div class="control-desc">Find nearby WiFi networks to connect</div>
+                        </div>
+                        <button class="btn btn-action" id="btn-wifi-scan" onclick="scanWifi()">Scan</button>
+                    </div>
+
+                    <div id="wifi-scan-results" class="wifi-scan-results" style="display:none;">
+                        <!-- Populated dynamically by JS -->
+                    </div>
+
+                    <!-- Manual SSID + Password Entry -->
+                    <div class="wifi-connect-form">
+                        <div class="time-input-group">
+                            <label for="wifi-ssid-input">WiFi SSID:</label>
+                            <input type="text" id="wifi-ssid-input" placeholder="Network name" class="time-input">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="wifi-pass-input">Password:</label>
+                            <input type="password" id="wifi-pass-input" placeholder="WiFi password" class="time-input">
+                        </div>
+                        <button class="btn btn-action" onclick="connectWifi()">Connect</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Console Log -->
+            <div class="card console-card">
+                <div class="card-header">
+                    <span class="card-icon">📟</span>
+                    <h3>System Event Log</h3>
+                    <button class="btn-clear" onclick="clearLogs()">Clear</button>
+                </div>
+                <div id="console-log" class="console-log">
+                    <div class="log-entry system">[SYSTEM] Dashboard initialized. Attempting WebSocket connection...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
