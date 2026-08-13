@@ -60,15 +60,18 @@ function connectFirebaseCloud() {
         // Listen for telemetry updates
         const telemetryRef = firebaseDb.ref('/esp01/telemetry');
         telemetryRef.on('value', (snapshot) => {
-            const dataStr = snapshot.val();
-            if (dataStr) {
+            const val = snapshot.val();
+            if (val) {
                 try {
-                    const data = JSON.parse(dataStr);
+                    const data = (typeof val === 'string') ? JSON.parse(val) : val;
                     handleIncomingMessage(data);
                 } catch (e) {
-                    // Ignore parse errors
+                    logEvent('error', `Telemetry parse error: ${e.message}`);
                 }
             }
+        }, (error) => {
+            updateCloudStatus('disconnected', 'Firebase Rules Blocked');
+            logEvent('error', `Firebase Error: ${error.message} (Code: ${error.code}). Please check your Database Rules in Firebase Console.`);
         });
     } catch (e) {
         updateCloudStatus('disconnected', 'Cloud Error');
