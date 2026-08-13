@@ -83,10 +83,19 @@ function updateCloudStatus(stateClass, labelText) {
     }
 }
 
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Port 81 for WebSockets, or current host if running on port 81 directly
-    const host = window.location.hostname || '192.168.4.1';
+let targetWsIp = null;
+
+function connectWebSocket(customIp = null) {
+    if (customIp) targetWsIp = customIp;
+    
+    // Default to hostname if not on a web host, else use fallback or discovered IP
+    let host = targetWsIp || window.location.hostname;
+    if (host.includes('github.io') || host.includes('web.app') || host.includes('firebaseapp.com')) {
+        host = targetWsIp || '192.168.4.1';
+    }
+
+    // Always use ws:// for local IPs, wss:// if hosted securely (though ESP-01 doesn't support WSS)
+    const protocol = (host === '192.168.4.1' || host.startsWith('192.168.')) ? 'ws:' : (window.location.protocol === 'https:' ? 'wss:' : 'ws:');
     const wsUrl = `${protocol}//${host}:81/`;
 
     updateStatus('connecting', 'Connecting...');
@@ -162,6 +171,11 @@ function handleIncomingMessage(data) {
 
         if (data.wifi) {
             syncWifiStatusUI(data.wifi);
+            // Dynamic local IP discovery
+            if (data.wifi.ip && data.wifi.ip !== targetWsIp && (!socket || socket.readyState !== WebSocket.OPEN)) {
+                logEvent('system', `Discovered local ESP-01 IP: ${data.wifi.ip}. Attempting local connection...`);
+                connectWebSocket(data.wifi.ip);
+            }
         }
 
         // Render custom sensor telemetry if present
